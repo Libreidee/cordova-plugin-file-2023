@@ -19,6 +19,7 @@
 package org.apache.cordova.file;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -30,7 +31,10 @@ import android.util.Base64;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 
+import androidx.annotation.RequiresApi;
 import androidx.webkit.WebViewAssetLoader;
 
 import org.apache.cordova.CallbackContext;
@@ -57,9 +61,17 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.Permission;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * This class provides file and directory services to JavaScript.
@@ -180,13 +192,17 @@ public class FileUtils extends CordovaPlugin {
         return availableFileSystems;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     @Override
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
     	super.initialize(cordova, webView);
     	this.filesystems = new ArrayList<Filesystem>();
         this.pendingRequests = new PendingRequests();
 
-    	String tempRoot = null;
+            final WebSettings settings = ((WebView)this.webView.getView()).getSettings();
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+        String tempRoot = null;
     	String persistentRoot = null;
 
     	Activity activity = cordova.getActivity();
@@ -255,12 +271,8 @@ public class FileUtils extends CordovaPlugin {
 
     @Override
     public Uri remapUri(Uri uri) {
-    	int cdvIndex = uri.toString().indexOf("cdvfile/localhost/");
-        if (cdvIndex > 0) {
-            uri = Uri.parse("cdvfile://localhost/" + uri.toString().substring(cdvIndex + "cdvfile/localhost/".length()));
-        }
-	    
         // Remap only cdvfile: URLs (not content:).
+        Log.w("PROVA", "PROVA");
         if (!LocalFilesystemURL.FILESYSTEM_PROTOCOL.equals(uri.getScheme())) {
             return null;
         }
@@ -291,7 +303,7 @@ public class FileUtils extends CordovaPlugin {
         if (action.equals("testSaveLocationExists")) {
             threadhelper(new FileOp() {
                 public void run(JSONArray args) {
-                    
+
                     boolean b = DirectoryManager.testSaveLocationExists();
                     callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, b));
                 }
@@ -1270,6 +1282,8 @@ public class FileUtils extends CordovaPlugin {
     }
 
     public CordovaPluginPathHandler getPathHandler() {
+
+
         WebViewAssetLoader.PathHandler pathHandler = path -> {
             String targetFileSystem = null;
 
@@ -1338,7 +1352,60 @@ public class FileUtils extends CordovaPlugin {
                 }
             }
 
-            return null;
+            try {
+                // DEBUG only
+                String hostname = webView.getPreferences().getString("hostname", "localhost");
+
+                if (
+                    hostname.equals("localhost") ||
+                    path.startsWith("plugins/") || path.startsWith("cordova_")
+                ) {
+                    return null;
+                }
+
+                Uri    fileUri = Uri.parse(path);
+                URL    fileUrl = new URL("https://" + hostname + "/" + path);
+                String fileMimeType = getMimeType(fileUri);
+
+                @SuppressLint("CustomX509TrustManager")
+                TrustManager[] trustAllCerts = new TrustManager[] {
+                    new X509TrustManager() {
+                        public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                    }
+                };
+                SSLContext sc = SSLContext.getInstance("SSL");
+                sc.init(null, trustAllCerts, new java.security.SecureRandom());
+                HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+                // Create all-trusting host name verifier
+                HostnameVerifier allHostsValid = new HostnameVerifier() {
+                    public boolean verify(String hostname, SSLSession session) {
+                        return true;
+                    }
+                };
+                // Install the all-trusting host verifier
+                HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+
+                HttpsURLConnection connection = (HttpsURLConnection) fileUrl.openConnection();
+                connection.setRequestMethod("GET");
+                connection.connect();
+
+                String contentEncoding = connection.getContentEncoding();
+
+                InputStream is = connection.getInputStream();
+
+                return new WebResourceResponse(fileMimeType, contentEncoding, is);
+            } catch (Exception e) {
+                return new WebResourceResponse("text/html", "utf-8", null);
+            }
+
+            // return null;
         };
 
         return new CordovaPluginPathHandler(pathHandler);
