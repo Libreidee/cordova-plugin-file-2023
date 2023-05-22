@@ -19,7 +19,6 @@
 package org.apache.cordova.file;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -199,8 +198,8 @@ public class FileUtils extends CordovaPlugin {
     	this.filesystems = new ArrayList<Filesystem>();
         this.pendingRequests = new PendingRequests();
 
-            final WebSettings settings = ((WebView)this.webView.getView()).getSettings();
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        final WebSettings settings = ((WebView)this.webView.getView()).getSettings();
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         String tempRoot = null;
     	String persistentRoot = null;
@@ -272,7 +271,6 @@ public class FileUtils extends CordovaPlugin {
     @Override
     public Uri remapUri(Uri uri) {
         // Remap only cdvfile: URLs (not content:).
-        Log.w("PROVA", "PROVA");
         if (!LocalFilesystemURL.FILESYSTEM_PROTOCOL.equals(uri.getScheme())) {
             return null;
         }
@@ -1282,8 +1280,6 @@ public class FileUtils extends CordovaPlugin {
     }
 
     public CordovaPluginPathHandler getPathHandler() {
-
-
         WebViewAssetLoader.PathHandler pathHandler = path -> {
             String targetFileSystem = null;
 
@@ -1353,7 +1349,7 @@ public class FileUtils extends CordovaPlugin {
             }
 
             try {
-                // DEBUG only
+
                 String hostname = webView.getPreferences().getString("hostname", "localhost");
 
                 if (
@@ -1367,16 +1363,18 @@ public class FileUtils extends CordovaPlugin {
                 URL    fileUrl = new URL("https://" + hostname + "/" + path);
                 String fileMimeType = getMimeType(fileUri);
 
-                @SuppressLint("CustomX509TrustManager")
+
+                // @SuppressLint("CustomX509TrustManager")
                 TrustManager[] trustAllCerts = new TrustManager[] {
                     new X509TrustManager() {
                         public java.security.cert.X509Certificate[] getAcceptedIssuers() {
                             return null;
                         }
 
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {  }
 
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {  }
+
                     }
                 };
                 SSLContext sc = SSLContext.getInstance("SSL");
